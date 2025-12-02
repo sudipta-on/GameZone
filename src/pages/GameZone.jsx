@@ -3,18 +3,18 @@ import GameCard from "../components/GameCard";
 const games = [
   {
     title: "Tic Tac Toe",
-    image: "src/assets/tic_tac_toe.png",
+    image: "/tic_tac_toe.png",
     link: "/tic-tac-toe",
   },
   {
     title: "Quantum Tetris",
-    image: "src/assets/q_tetris.png",
+    image: "/q_tetris.png",
     link: "/qtetris",
   },
   {
-    title: "Snake Game",
-    image: "https-i.imgur.com/k0Qp5L8.png",
-    link: "/chess",
+    title: "Flappy Bird",
+    image: "/flappy_bird.png",
+    link: "/flappy",
   },
 ];
 

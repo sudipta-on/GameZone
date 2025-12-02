@@ -13,7 +13,7 @@ export default function App() {
         <Route path="/" element={<GameZone />} />
         <Route path="/tic-tac-toe" element={<TicTacToe />} />
         <Route path="/qtetris" element={<QuantumTetris />} />
-        <Route path="/chess" element={<FlappyBird />} />
+        <Route path="/flappy" element={<FlappyBird />} />
       </Routes>
     </Router>
   );

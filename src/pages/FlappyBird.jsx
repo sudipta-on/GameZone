@@ -18,6 +18,9 @@ export default function FlappyBird() {
   const [navHeight, setNavHeight] = useState(90);
   const navbarRef = useRef(null);
 
+  /* NEW: paused state */
+  const [paused, setPaused] = useState(false);
+
   /* ===============================
         BIRD & PHYSICS
   =============================== */
@@ -90,7 +93,7 @@ export default function FlappyBird() {
 
       if (bgm.current) {
         bgm.current.muted = !newState;
-        if (newState) bgm.current.play();
+        if (newState && !paused) bgm.current.play();
       }
 
       return newState;
@@ -113,6 +116,7 @@ export default function FlappyBird() {
 
     setShowCountdown(true);
     started.current = false;
+    setPaused(false);
   };
 
   /* ===============================
@@ -199,7 +203,8 @@ export default function FlappyBird() {
   useEffect(() => {
     if (!showCountdown) {
       started.current = true;
-      animationFrame.current = requestAnimationFrame(loop);
+      // start loop if not paused
+      if (!paused) animationFrame.current = requestAnimationFrame(loop);
       return;
     }
 
@@ -215,14 +220,25 @@ export default function FlappyBird() {
     }, 1000);
 
     return () => clearInterval(t);
-  }, [showCountdown]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showCountdown]); // do not add loop/paused here
 
   /* ===============================
         GAME LOOP
+        (checks paused and gameOver)
   =============================== */
   const loop = () => {
+    // if countdown still showing, keep looping but don't update physics
     if (showCountdown) {
       animationFrame.current = requestAnimationFrame(loop);
+      return;
+    }
+
+    // If paused or gameOver, do not update; keep frame reference so resume works
+    if (paused || gameOver) {
+      // stop updating but keep reference cleared
+      cancelAnimationFrame(animationFrame.current);
+      animationFrame.current = null;
       return;
     }
 
@@ -314,9 +330,10 @@ export default function FlappyBird() {
 
   /* ===============================
         FLAP
+        (ignore while paused or gameOver)
   =============================== */
   const flap = () => {
-    if (gameOver || !started.current) return;
+    if (gameOver || !started.current || paused) return;
     velocity.current = flapPower;
 
     if (flapSound.current) {
@@ -326,7 +343,7 @@ export default function FlappyBird() {
   };
 
   /* ===============================
-        SPACE KEY
+        SPACE KEY (flap)
   =============================== */
   useEffect(() => {
     const onKey = (e) => {
@@ -337,7 +354,44 @@ export default function FlappyBird() {
     };
     window.addEventListener("keydown", onKey, { passive: false });
     return () => window.removeEventListener("keydown", onKey);
-  }, [gameOver]);
+  }, [gameOver, paused]); // re-register if paused or gameOver changes
+
+  /* ===============================
+        ESC to toggle pause
+  =============================== */
+  useEffect(() => {
+    const escHandler = (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        // toggle pause
+        setPaused((p) => {
+          const newP = !p;
+
+          if (newP) {
+            // pausing: stop animation and pause bgm
+            if (animationFrame.current) {
+              cancelAnimationFrame(animationFrame.current);
+              animationFrame.current = null;
+            }
+            if (bgm.current) bgm.current.pause();
+          } else {
+            // resuming: restart loop (unless countdown or gameOver)
+            if (!showCountdown && !gameOver) {
+              // small delay to ensure state updates
+              animationFrame.current = requestAnimationFrame(loop);
+              if (bgm.current && audioEnabled) bgm.current.play();
+            }
+          }
+
+          return newP;
+        });
+      }
+    };
+
+    window.addEventListener("keydown", escHandler);
+    return () => window.removeEventListener("keydown", escHandler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showCountdown, gameOver, audioEnabled]);
 
   /* ===============================
         CLOUDS
@@ -349,6 +403,28 @@ export default function FlappyBird() {
     }, 20);
     return () => clearInterval(id);
   }, []);
+
+  /* ===============================
+        NAVBAR Pause button behavior
+  =============================== */
+  const togglePauseFromButton = () => {
+    setPaused((p) => {
+      const newP = !p;
+      if (newP) {
+        if (animationFrame.current) {
+          cancelAnimationFrame(animationFrame.current);
+          animationFrame.current = null;
+        }
+        if (bgm.current) bgm.current.pause();
+      } else {
+        if (!showCountdown && !gameOver) {
+          animationFrame.current = requestAnimationFrame(loop);
+          if (bgm.current && audioEnabled) bgm.current.play();
+        }
+      }
+      return newP;
+    });
+  };
 
   /* ===============================
         UI RENDER
@@ -390,7 +466,7 @@ export default function FlappyBird() {
             cursor: "pointer",
           }}
         >
-          ⬅ Home
+          Home
         </button>
 
         {/* TITLE + DIFFICULTY */}
@@ -445,7 +521,7 @@ export default function FlappyBird() {
           </div>
         </div>
 
-        {/* SCORE & SOUND */}
+        {/* SCORE & SOUND & PAUSE */}
         <div
           style={{
             padding: "6px 12px",
@@ -478,6 +554,24 @@ export default function FlappyBird() {
             }}
           >
             {audioEnabled ? "🔊" : "🔇"}
+          </button>
+
+          {/* Pause/Resume button */}
+          <button
+            onClick={togglePauseFromButton}
+            style={{
+              padding: "6px 10px",
+              borderRadius: 8,
+              border: "none",
+              background: paused ? "#38bdf8" : "rgba(255,255,255,0.12)",
+              color: paused ? "#000" : "#fff",
+              cursor: "pointer",
+              marginLeft: 6,
+              fontWeight: 800,
+            }}
+            title="Pause (Esc)"
+          >
+            {paused ? "Resume" : "Pause"}
           </button>
         </div>
       </div>
@@ -520,20 +614,25 @@ export default function FlappyBird() {
           ☁️
         </div>
 
-        {/* BIRD */}
-        <div
+        {/* BIRD (png sprite) */}
+        <img
+          src="/flappy.png"
+          alt="bird"
           style={{
             position: "absolute",
             left: birdX,
             top: birdY.current,
-            fontSize: birdSize,
+            width: birdSize,
+            height: "auto",
             transform: `rotate(${tilt.current}deg)`,
+            transformOrigin: "center",
             transition: "transform 0.08s linear",
             zIndex: 10,
+            pointerEvents: "none",
+            userSelect: "none",
           }}
-        >
-          {birdEmoji}
-        </div>
+        />
+
 
         {/* PIPES */}
         {pipes.current.map((p, idx) => {
@@ -569,6 +668,41 @@ export default function FlappyBird() {
             </React.Fragment>
           );
         })}
+
+        {/* PAUSE OVERLAY */}
+        {paused && !gameOver && (
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              background: "rgba(0,0,0,0.45)",
+              backdropFilter: "blur(6px)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 20,
+              color: "white",
+              flexDirection: "column",
+              gap: 12,
+            }}
+          >
+            <div style={{ fontSize: 40, fontWeight: 900 }}>PAUSED</div>
+            <div style={{ opacity: 0.8 }}>Press <b>Esc</b> or click Resume</div>
+            <button
+              onClick={togglePauseFromButton}
+              style={{
+                padding: "10px 16px",
+                borderRadius: 10,
+                background: "#38bdf8",
+                border: "none",
+                fontWeight: 800,
+                cursor: "pointer",
+              }}
+            >
+              Resume
+            </button>
+          </div>
+        )}
 
         {/* GAME OVER SCREEN */}
         {gameOver && (
@@ -685,31 +819,29 @@ export default function FlappyBird() {
       )}
 
       {/* FOOTER */}
-      {/* FOOTER NAME */}
-<div
-  style={{
-    position: "fixed",
-    bottom: "14px",
-    right: "16px",
-    zIndex: 9999,
+      <div
+        style={{
+          position: "fixed",
+          bottom: "14px",
+          right: "16px",
+          zIndex: 9999,
 
-    /* Typography */
-    fontSize: "14px",
-    letterSpacing: "0.5px",
-    color: "#cbd5e1",
-    opacity: 0.7,
+          /* Typography */
+          fontSize: "14px",
+          letterSpacing: "0.5px",
+          color: "#cbd5e1",
+          opacity: 0.7,
 
-    /* Subtle glowing fade */
-    textShadow: "0 0 6px rgba(255,255,255,0.18)",
+          /* Subtle glowing fade */
+          textShadow: "0 0 6px rgba(255,255,255,0.18)",
 
-    /* Smooth UI */
-    userSelect: "none",
-    pointerEvents: "none",
-  }}
->
-  © 2025 — Sudipta Majumder
-</div>
-
+          /* Smooth UI */
+          userSelect: "none",
+          pointerEvents: "none",
+        }}
+      >
+        © 2025 — Sudipta Majumder
+      </div>
     </div>
   );
 }
